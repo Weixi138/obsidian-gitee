@@ -15,6 +15,7 @@ export class SyncEngine {
   private vault: Vault;
   private passwordManager: PasswordManager;
   private remoteTree: Map<string, { sha: string; type: 'blob' | 'tree' }> | null = null;
+  private pathMapCache: Record<string, string> | null = null;
 
   constructor(
     plugin: Plugin,
@@ -67,6 +68,8 @@ export class SyncEngine {
       this.remoteTree = remoteTree;
 
       await this.stateManager.load();
+
+      this.pathMapCache = await this.loadPathMap();
 
       const currentHash = await this.passwordManager.getPasswordHash(
         await this.passwordManager.getPassword()
@@ -139,8 +142,11 @@ export class SyncEngine {
       }
 
       if (pendingStates.length > 0 || deletedStates.length > 0) {
-        if (pendingPathMap.length > 0) {
-          await this.batchSavePathMap(pendingPathMap);
+        if (pendingPathMap.length > 0 && this.pathMapCache) {
+          for (const [remotePath, localPath] of pendingPathMap) {
+            this.pathMapCache[remotePath] = localPath;
+          }
+          await this.writePathMap(this.pathMapCache);
         }
         await this.stateManager.batchUpdate(pendingStates);
         for (const ds of deletedStates) {
@@ -221,6 +227,7 @@ export class SyncEngine {
       this.remoteTree = remoteTree;
 
       const pathMap = await this.loadPathMap();
+      this.pathMapCache = { ...pathMap };
 
       await this.stateManager.load();
 
@@ -253,6 +260,9 @@ export class SyncEngine {
             const computed = await getRemotePath(file.path, filePassword);
             if (computed === remotePath) {
               localPath = file.path;
+              if (this.pathMapCache) {
+                this.pathMapCache[remotePath] = localPath;
+              }
               break;
             }
           }

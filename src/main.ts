@@ -328,10 +328,11 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
 
   async checkForUpdate(): Promise<void> {
     const now = Date.now();
-    if (now - this.settings.lastUpdateCheck < 86400000) return;
+    if (now - this.settings.lastUpdateCheck < 3600000) return;
     this.settings.lastUpdateCheck = now;
     await this.saveData(this.settings);
 
+    this.setStatusBarText('Gitee: 检查更新...');
     try {
       const resp = await requestUrl({
         url: 'https://api.github.com/repos/Weixi138/obsidian-gitee/releases/latest',
@@ -339,10 +340,14 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       });
       const latest = (resp.json.tag_name as string).replace(/^v/, '');
       const current = this.manifest.version;
-      if (latest === current) return;
+      if (latest === current) {
+        this.setStatusBarText('Gitee: 已是最新');
+        return;
+      }
+      this.setStatusBarText(`Gitee: 新版本 v${latest}`);
       openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${resp.json.body || '无更新日志'}`);
     } catch {
-      // 静默忽略检查失败
+      this.setStatusBarText('Gitee: 更新检查失败');
     }
   }
 }

@@ -111,7 +111,8 @@ export class GiteeClient {
     const encodedPath = this.encodePath(path);
     const body: Record<string, unknown> = { message, content: contentBase64 };
     if (sha) body.sha = sha;
-    const data = await this.request<GiteeFileResponse>('PUT', `/repos/${this.owner}/${this.repo}/contents/${encodedPath}`, body);
+    const method = sha ? 'PUT' : 'POST';
+    const data = await this.request<GiteeFileResponse>(method, `/repos/${this.owner}/${this.repo}/contents/${encodedPath}`, body);
     return data.content?.sha || data.commit?.sha || '';
   }
 

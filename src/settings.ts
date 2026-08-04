@@ -268,6 +268,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
             `拉取次数: ${stats.totalPulls}`,
             `总上传文件: ${stats.totalUploaded}`,
             `总下载文件: ${stats.totalDownloaded}`,
+            `总删除文件: ${stats.totalDeleted}`,
             `总错误数: ${stats.totalErrors}`,
             `状态文件数: ${Object.keys(this.stateManager.getState().files).length}`,
           ].join('\n');

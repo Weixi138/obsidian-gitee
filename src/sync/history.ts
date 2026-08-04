@@ -42,19 +42,19 @@ export class SyncHistoryManager {
     if (this.records.length > this.maxRecords) {
       this.records = this.records.slice(0, this.maxRecords);
     }
-    await this.save();
+    try {
+      await this.save();
+    } catch (e) {
+      // 保存失败时记录仍在内存中，下次操作会重试
+    }
   }
 
   async save(): Promise<void> {
     const path = this.getHistoryPath();
     const dir = path.substring(0, path.lastIndexOf('/'));
-    try {
-      const dirExists = await this.plugin.app.vault.adapter.exists(dir);
-      if (!dirExists) {
-        await this.plugin.app.vault.adapter.mkdir(dir);
-      }
-    } catch {
-      // ignore
+    const dirExists = await this.plugin.app.vault.adapter.exists(dir);
+    if (!dirExists) {
+      await this.plugin.app.vault.adapter.mkdir(dir);
     }
     await this.plugin.app.vault.adapter.write(path, JSON.stringify(this.records, null, 2));
   }
@@ -63,20 +63,22 @@ export class SyncHistoryManager {
     return this.records.slice(0, limit);
   }
 
-  getStats(): { totalPushes: number; totalPulls: number; totalUploaded: number; totalDownloaded: number; totalErrors: number } {
+  getStats(): { totalPushes: number; totalPulls: number; totalUploaded: number; totalDownloaded: number; totalDeleted: number; totalErrors: number } {
     let totalPushes = 0;
     let totalPulls = 0;
     let totalUploaded = 0;
     let totalDownloaded = 0;
+    let totalDeleted = 0;
     let totalErrors = 0;
     for (const r of this.records) {
       if (r.type === 'push' || r.type === 'auto_push') totalPushes++;
       if (r.type === 'pull' || r.type === 'auto_pull') totalPulls++;
       totalUploaded += r.uploaded;
       totalDownloaded += r.downloaded;
+      totalDeleted += r.deleted;
       totalErrors += r.errors.length;
     }
-    return { totalPushes, totalPulls, totalUploaded, totalDownloaded, totalErrors };
+    return { totalPushes, totalPulls, totalUploaded, totalDownloaded, totalDeleted, totalErrors };
   }
 
   async exportLog(): Promise<string> {

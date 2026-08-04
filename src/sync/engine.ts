@@ -369,12 +369,9 @@ export class SyncEngine {
     const map = await this.loadPathMap();
     map[remotePath] = localPath;
     const json = JSON.stringify(map, null, 2);
-    const bytes = new TextEncoder().encode(json);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]!);
-    }
-    const content = btoa(binary);
+    const password = this.passwordManager.getPasswordForFile('path-map.json.enc');
+    const encrypted = await encrypt(json, password);
+    const content = btoa(encrypted);
     try {
       await this.gitee.createOrUpdateFile('path-map.json.enc', content, 'Update path map');
     } catch {
@@ -386,7 +383,15 @@ export class SyncEngine {
     try {
       const data = await this.gitee.getFileContent('path-map.json.enc');
       if (data && data.content && data.content.trim()) {
-        return JSON.parse(data.content) as Record<string, string>;
+        const password = this.passwordManager.getPasswordForFile('path-map.json.enc');
+        try {
+          const decrypted = await decrypt(data.content, password);
+          return JSON.parse(decrypted) as Record<string, string>;
+        } catch {
+          // 兼容旧版本：未加密的 base64 编码
+          const raw = atob(data.content);
+          return JSON.parse(raw) as Record<string, string>;
+        }
       }
     } catch {
       // ignore

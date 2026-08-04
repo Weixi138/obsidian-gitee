@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS: GiteeSyncSettings = {
   repo: '',
   token: '',
   password: '',
-  branch: 'main',
+  branch: 'master',
   ignorePatterns: ['.obsidian', '.git'],
   maxFileSizeMB: 50,
 };

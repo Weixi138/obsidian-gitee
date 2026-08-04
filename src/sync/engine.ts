@@ -388,9 +388,8 @@ export class SyncEngine {
           const decrypted = await decrypt(data.content, password);
           return JSON.parse(decrypted) as Record<string, string>;
         } catch {
-          // 兼容旧版本：未加密的 base64 编码
-          const raw = atob(data.content);
-          return JSON.parse(raw) as Record<string, string>;
+          // 兼容旧版本：未加密的 JSON 明文
+          return JSON.parse(data.content) as Record<string, string>;
         }
       }
     } catch {

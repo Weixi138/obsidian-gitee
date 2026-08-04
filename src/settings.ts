@@ -7,6 +7,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
   private settings: GiteeSyncSettings;
   private saveSettings: () => Promise<void>;
   private stateManager: SyncStateManager;
+  private pluginVersion: string;
 
   constructor(
     app: App,
@@ -19,6 +20,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
     this.settings = settings;
     this.saveSettings = saveSettings;
     this.stateManager = stateManager;
+    this.pluginVersion = plugin.manifest.version;
   }
 
   display(): void {
@@ -176,5 +178,9 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
             }
           }),
       );
+
+    containerEl.createEl('div', {
+      text: `版本 ${this.pluginVersion}`,
+    }).style.cssText = 'text-align: center; color: var(--text-muted); font-size: 0.85em; margin-top: 24px;';
   }
 }

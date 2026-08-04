@@ -1,0 +1,10 @@
+{
+	"id": "sync-gitee",
+	"name": "sync-gitee",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "端到端加密同步笔记到 Gitee 仓库",
+	"author": "weixi",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}

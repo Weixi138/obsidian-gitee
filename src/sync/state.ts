@@ -59,6 +59,10 @@ export class SyncStateManager {
     return this.state.files[localPath] ?? null;
   }
 
+  getState(): SyncState {
+    return this.state;
+  }
+
   getFileStateByRemotePath(remotePath: string): SyncFileState | null {
     return Object.values(this.state.files).find(f => f.remotePath === remotePath) ?? null;
   }

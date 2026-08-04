@@ -18,6 +18,15 @@ export class PasswordManager {
     return password;
   }
 
+  getPasswordForFile(filePath: string): string {
+    for (const [folder, pwd] of Object.entries(this.settings.folderPasswords)) {
+      if (filePath.startsWith(folder + '/') || filePath === folder) {
+        return pwd;
+      }
+    }
+    return this.settings.password;
+  }
+
   async getPasswordHash(password: string): Promise<string> {
     return computeSHA256(password);
   }

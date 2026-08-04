@@ -33,7 +33,7 @@ export class SyncEngine {
   }
 
   async pushAll(): Promise<SyncResult> {
-    const result: SyncResult = { uploaded: 0, downloaded: 0, errors: [], skipped: [] };
+    const result: SyncResult = { uploaded: 0, downloaded: 0, deleted: 0, errors: [], skipped: [] };
 
     try {
       if (!this.settings.owner || !this.settings.repo || !this.settings.token) {
@@ -41,12 +41,16 @@ export class SyncEngine {
         return { ...result, errors: ['设置不完整'] };
       }
 
-      const password = await this.passwordManager.getPassword();
+      await this.passwordManager.getPassword();
 
       const files = this.vault.getFiles();
 
       const localFiles = files.filter(f => {
         if (isIgnored(f.path, this.settings.ignorePatterns)) return false;
+        if (this.settings.syncFolders.length > 0) {
+          const inFolder = this.settings.syncFolders.some(folder => f.path.startsWith(folder + '/') || f.path === folder);
+          if (!inFolder) return false;
+        }
         const sizeMB = getFileSize(f) / (1024 * 1024);
         if (sizeMB > this.settings.maxFileSizeMB) {
           result.skipped.push({ path: f.path, reason: `超过大小限制 (${sizeMB.toFixed(1)}MB > ${this.settings.maxFileSizeMB}MB)` });
@@ -55,21 +59,18 @@ export class SyncEngine {
         return true;
       });
 
+      const localPaths = new Set(localFiles.map(f => f.path));
+
       const commitSha = await this.gitee.getBranchCommitSha();
       const treeSha = await this.gitee.getTreeSha(commitSha);
       const remoteTree = await this.gitee.getRecursiveTree(treeSha);
       this.remoteTree = remoteTree;
 
-      const remoteFiles = new Map<string, { sha: string }>();
-      for (const [path, info] of remoteTree) {
-        if (isEncryptedFile(path) && info.type === 'blob' && path !== 'path-map.json.enc') {
-          remoteFiles.set(path, { sha: info.sha });
-        }
-      }
-
       await this.stateManager.load();
 
-      const currentHash = await this.passwordManager.getPasswordHash(password);
+      const currentHash = await this.passwordManager.getPasswordHash(
+        await this.passwordManager.getPassword()
+      );
       const storedHash = this.stateManager.getPasswordHash();
       if (storedHash && currentHash !== storedHash) {
         new Notice('检测到密码变更，请先在设置中更新密码');
@@ -84,7 +85,8 @@ export class SyncEngine {
 
       for (const file of localFiles) {
         try {
-          const remotePath = await getRemotePath(file.path, password);
+          const filePassword = this.passwordManager.getPasswordForFile(file.path);
+          const remotePath = await getRemotePath(file.path, filePassword);
           const state = this.stateManager.getFileState(file.path);
 
           let localHash: string;
@@ -100,7 +102,7 @@ export class SyncEngine {
             continue;
           }
 
-          await this.uploadFile(file, remotePath, password);
+          await this.uploadFile(file, remotePath, filePassword);
           const remoteInfo = this.remoteTree?.get(remotePath);
           pendingStates.push({
             localPath: file.path,
@@ -116,8 +118,25 @@ export class SyncEngine {
         }
       }
 
-      if (pendingStates.length > 0) {
+      const deletedStates: SyncFileState[] = [];
+      for (const [localPath, state] of Object.entries(this.stateManager.getState().files)) {
+        if (!localPaths.has(localPath)) {
+          try {
+            await this.gitee.deleteFile(state.remotePath, `Delete: ${localPath}`, state.remoteSha);
+            deletedStates.push(state);
+            result.deleted++;
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            result.errors.push(`删除远程失败 ${localPath}: ${msg}`);
+          }
+        }
+      }
+
+      if (pendingStates.length > 0 || deletedStates.length > 0) {
         await this.stateManager.batchUpdate(pendingStates);
+        for (const ds of deletedStates) {
+          await this.stateManager.removeFileState(ds.localPath);
+        }
       }
 
       return result;
@@ -133,7 +152,7 @@ export class SyncEngine {
     const file = this.vault.getAbstractFileByPath(filePath);
     if (!(file instanceof TFile)) throw new Error(`文件不存在: ${filePath}`);
 
-    const password = await this.passwordManager.getPassword();
+    const password = this.passwordManager.getPasswordForFile(filePath);
     const remotePath = await getRemotePath(filePath, password);
 
     let existingSha: string | undefined;
@@ -177,7 +196,7 @@ export class SyncEngine {
   }
 
   async pullAll(): Promise<SyncResult> {
-    const result: SyncResult = { uploaded: 0, downloaded: 0, errors: [], skipped: [] };
+    const result: SyncResult = { uploaded: 0, downloaded: 0, deleted: 0, errors: [], skipped: [] };
 
     try {
       if (!this.settings.owner || !this.settings.repo || !this.settings.token) {
@@ -185,7 +204,7 @@ export class SyncEngine {
         return { ...result, errors: ['设置不完整'] };
       }
 
-      const password = await this.passwordManager.getPassword();
+      await this.passwordManager.getPassword();
 
       const commitSha = await this.gitee.getBranchCommitSha();
       const treeSha = await this.gitee.getTreeSha(commitSha);
@@ -196,7 +215,9 @@ export class SyncEngine {
 
       await this.stateManager.load();
 
-      const currentHash = await this.passwordManager.getPasswordHash(password);
+      const currentHash = await this.passwordManager.getPasswordHash(
+        await this.passwordManager.getPassword()
+      );
       const storedHash = this.stateManager.getPasswordHash();
       if (storedHash && currentHash !== storedHash) {
         new Notice('检测到密码变更，请先在设置中更新密码');
@@ -225,11 +246,13 @@ export class SyncEngine {
             continue;
           }
 
+          const filePassword = this.passwordManager.getPasswordForFile(localPath);
+
           if (isBinaryFileByExt(localPath)) {
-            const decrypted = await decryptBinary(data.content, password);
+            const decrypted = await decryptBinary(data.content, filePassword);
             await writeBinaryFile(this.vault, localPath, decrypted);
           } else {
-            const decrypted = await decrypt(data.content, password);
+            const decrypted = await decrypt(data.content, filePassword);
             await writeTextFile(this.vault, localPath, decrypted);
           }
 
@@ -267,7 +290,7 @@ export class SyncEngine {
     const file = this.vault.getAbstractFileByPath(filePath);
     if (!(file instanceof TFile)) throw new Error(`文件不存在: ${filePath}`);
 
-    const password = await this.passwordManager.getPassword();
+    const password = this.passwordManager.getPasswordForFile(filePath);
     const remotePath = await getRemotePath(filePath, password);
 
     const data = await this.gitee.getFileContent(remotePath);
@@ -291,6 +314,27 @@ export class SyncEngine {
       remoteSha: data.sha,
       lastSync: Date.now(),
     });
+  }
+
+  async onFileDeleted(localPath: string): Promise<void> {
+    const state = this.stateManager.getFileState(localPath);
+    if (!state) return;
+    try {
+      await this.gitee.deleteFile(state.remotePath, `Delete: ${localPath}`, state.remoteSha);
+      await this.stateManager.removeFileState(localPath);
+    } catch {
+      // 远程文件可能已被删除，忽略错误
+    }
+  }
+
+  async onFileRenamed(oldPath: string, newPath: string): Promise<void> {
+    const state = this.stateManager.getFileState(oldPath);
+    if (!state) return;
+    state.localPath = newPath;
+    delete this.stateManager.getState().files[oldPath];
+    this.stateManager.getState().files[newPath] = state;
+    await this.stateManager.save(this.stateManager.getState());
+    await this.savePathMapEntry(state.remotePath, newPath);
   }
 
   private async uploadFile(file: TFile, remotePath: string, password: string): Promise<void> {

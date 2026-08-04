@@ -5,6 +5,9 @@ import { GiteeClient } from './gitee/client';
 import { SyncStateManager } from './sync/state';
 import { PasswordManager } from './password-manager';
 import { SyncEngine } from './sync/engine';
+import { SyncHistoryManager } from './sync/history';
+import { McpServer } from './sync/mcp-server';
+import { openHistoryModal } from './ui/history-view';
 
 export default class GiteeEncryptedSyncPlugin extends Plugin {
   settings!: GiteeSyncSettings;
@@ -12,12 +15,20 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
   giteeClient!: GiteeClient;
   syncEngine!: SyncEngine;
   passwordManager!: PasswordManager;
+  historyManager!: SyncHistoryManager;
+  mcpServer!: McpServer;
+  private autoPushTimers: Map<string, number> = new Map();
+  private syncIntervalId: number | null = null;
+  private statusBarItem!: HTMLElement;
 
   async onload() {
     await this.loadSettings();
 
     this.passwordManager = new PasswordManager(this.settings);
     this.stateManager = new SyncStateManager(this);
+    this.historyManager = new SyncHistoryManager(this);
+    this.historyManager.load().catch(() => {});
+    this.mcpServer = new McpServer(this.app);
     this.giteeClient = new GiteeClient(
       this.settings.owner,
       this.settings.repo,
@@ -33,19 +44,35 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       this.passwordManager,
     );
 
+    this.statusBarItem = this.addStatusBarItem();
+    this.statusBarItem.setText('Gitee: 就绪');
+    this.statusBarItem.style.cssText = 'cursor: pointer;';
+    this.statusBarItem.addEventListener('click', () => {
+      new Notice(`上次同步: ${this.stateManager.getState().lastSyncTime ? new Date(this.stateManager.getState().lastSyncTime).toLocaleString() : '从未'}`);
+    });
+
     this.addCommand({
       id: 'gitee-push',
       name: '推送所有文件至 Gitee',
       callback: async () => {
         try {
+          this.setStatusBarText('Gitee: 推送中...');
           const result = await this.syncEngine.pushAll();
           const parts: string[] = [];
           if (result.uploaded > 0) parts.push(`上传 ${result.uploaded} 个文件`);
           if (result.skipped.length > 0) parts.push(`跳过 ${result.skipped.length} 个文件`);
+          if (result.deleted > 0) parts.push(`删除 ${result.deleted} 个远程文件`);
           new Notice(`推送完成: ${parts.join(', ') || '无变更'}`);
+          this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
+          await this.historyManager.addRecord({
+            timestamp: Date.now(), type: 'push',
+            uploaded: result.uploaded, downloaded: 0, deleted: result.deleted,
+            errors: result.errors,
+          });
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           new Notice(`推送失败: ${msg}`);
+          this.setStatusBarText('Gitee: 失败');
         }
       },
     });
@@ -55,11 +82,19 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       name: '从 Gitee 拉取所有文件',
       callback: async () => {
         try {
+          this.setStatusBarText('Gitee: 拉取中...');
           const result = await this.syncEngine.pullAll();
           new Notice(`拉取完成: 下载 ${result.downloaded} 个文件`);
+          this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
+          await this.historyManager.addRecord({
+            timestamp: Date.now(), type: 'pull',
+            uploaded: 0, downloaded: result.downloaded, deleted: 0,
+            errors: result.errors,
+          });
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           new Notice(`拉取失败: ${msg}`);
+          this.setStatusBarText('Gitee: 失败');
         }
       },
     });
@@ -71,14 +106,23 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         .setIcon('upload')
         .onClick(async () => {
           try {
+            this.setStatusBarText('Gitee: 推送中...');
             const result = await this.syncEngine.pushAll();
             const parts: string[] = [];
             if (result.uploaded > 0) parts.push(`上传 ${result.uploaded} 个文件`);
             if (result.skipped.length > 0) parts.push(`跳过 ${result.skipped.length} 个文件`);
+            if (result.deleted > 0) parts.push(`删除 ${result.deleted} 个远程文件`);
             new Notice(`推送完成: ${parts.join(', ') || '无变更'}`);
+            this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
+            await this.historyManager.addRecord({
+              timestamp: Date.now(), type: 'push',
+              uploaded: result.uploaded, downloaded: 0, deleted: result.deleted,
+              errors: result.errors,
+            });
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             new Notice(`推送失败: ${msg}`);
+            this.setStatusBarText('Gitee: 失败');
           }
         }));
       menu.addItem(item => item
@@ -93,11 +137,19 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         .setIcon('download')
         .onClick(async () => {
           try {
+            this.setStatusBarText('Gitee: 拉取中...');
             const result = await this.syncEngine.pullAll();
             new Notice(`拉取完成: 下载 ${result.downloaded} 个文件`);
+            this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
+            await this.historyManager.addRecord({
+              timestamp: Date.now(), type: 'pull',
+              uploaded: 0, downloaded: result.downloaded, deleted: 0,
+              errors: result.errors,
+            });
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             new Notice(`拉取失败: ${msg}`);
+            this.setStatusBarText('Gitee: 失败');
           }
         }));
       menu.showAtMouseEvent(evt);
@@ -135,6 +187,58 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       }),
     );
 
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        if (!(file instanceof TFile)) return;
+        this.syncEngine.onFileDeleted(file.path).catch(() => {});
+      }),
+    );
+
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (!(file instanceof TFile)) return;
+        this.syncEngine.onFileRenamed(oldPath, file.path).catch(() => {});
+      }),
+    );
+
+    this.registerEvent(
+      this.app.vault.on('modify', (file) => {
+        if (!(file instanceof TFile) || !this.settings.autoPush) return;
+        const existing = this.autoPushTimers.get(file.path);
+        if (existing) window.clearTimeout(existing);
+        const timer = window.setTimeout(() => {
+          this.autoPushTimers.delete(file.path);
+          this.syncEngine.pushFile(file.path).catch(() => {});
+        }, 2000);
+        this.autoPushTimers.set(file.path, timer);
+      }),
+    );
+
+    this.registerEvent(
+      this.app.workspace.on('file-open', (file) => {
+        if (!file) {
+          this.statusBarItem.setText('Gitee: 就绪');
+          return;
+        }
+        const state = this.stateManager.getFileState(file.path);
+        if (!state) {
+          this.statusBarItem.setText('Gitee: 未跟踪');
+        } else {
+          this.statusBarItem.setText(`Gitee: ✅ ${new Date(state.lastSync).toLocaleTimeString()}`);
+        }
+      }),
+    );
+
+    this.setupIntervalSync();
+
+    if (this.settings.autoPullOnStart && this.settings.owner && this.settings.repo && this.settings.token) {
+      this.syncEngine.pullAll().catch(() => {});
+    }
+
+    if (this.settings.mcpServerEnabled) {
+      this.mcpServer.start();
+    }
+
     this.addSettingTab(
       new GiteeSyncSettingTab(
         this.app,
@@ -142,12 +246,47 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         this.settings,
         this.saveSettings.bind(this),
         this.stateManager,
+        this.historyManager,
       ),
     );
   }
 
   onunload() {
-    // nothing to clean up
+    for (const timer of this.autoPushTimers.values()) {
+      window.clearTimeout(timer);
+    }
+    this.autoPushTimers.clear();
+    if (this.syncIntervalId !== null) {
+      window.clearInterval(this.syncIntervalId);
+      this.syncIntervalId = null;
+    }
+    this.mcpServer.stop();
+  }
+
+  private setupIntervalSync() {
+    if (this.syncIntervalId !== null) {
+      window.clearInterval(this.syncIntervalId);
+      this.syncIntervalId = null;
+    }
+    if (this.settings.syncIntervalMin > 0) {
+      this.syncIntervalId = window.setInterval(() => {
+        this.setStatusBarText('Gitee: 定时同步中...');
+        this.syncEngine.pushAll().then(result => {
+          this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
+          this.historyManager.addRecord({
+            timestamp: Date.now(), type: 'auto_push',
+            uploaded: result.uploaded, downloaded: 0, deleted: result.deleted,
+            errors: result.errors,
+          }).catch(() => {});
+        }).catch(() => {
+          this.setStatusBarText('Gitee: 定时同步失败');
+        });
+      }, this.settings.syncIntervalMin * 60 * 1000);
+    }
+  }
+
+  private setStatusBarText(text: string) {
+    this.statusBarItem.setText(text);
   }
 
   async loadSettings() {
@@ -173,6 +312,7 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       this.app.vault,
       this.passwordManager,
     );
+    this.setupIntervalSync();
     await this.saveData(this.settings);
   }
 }

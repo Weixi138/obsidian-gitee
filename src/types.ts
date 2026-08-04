@@ -5,9 +5,16 @@ export interface GiteeSyncSettings {
   repo: string;
   token: string;
   password: string;
+  passwordHint: string;
+  folderPasswords: Record<string, string>;
   branch: string;
   ignorePatterns: string[];
+  syncFolders: string[];
   maxFileSizeMB: number;
+  autoPush: boolean;
+  autoPullOnStart: boolean;
+  syncIntervalMin: number;
+  mcpServerEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: GiteeSyncSettings = {
@@ -15,9 +22,16 @@ export const DEFAULT_SETTINGS: GiteeSyncSettings = {
   repo: '',
   token: '',
   password: '',
+  passwordHint: '',
+  folderPasswords: {},
   branch: 'master',
   ignorePatterns: ['.obsidian', '.git'],
+  syncFolders: [],
   maxFileSizeMB: 50,
+  autoPush: false,
+  autoPullOnStart: false,
+  syncIntervalMin: 0,
+  mcpServerEnabled: false,
 };
 
 export interface SyncFileState {
@@ -38,6 +52,7 @@ export interface SyncState {
 export interface SyncResult {
   uploaded: number;
   downloaded: number;
+  deleted: number;
   errors: string[];
   skipped: { path: string; reason: string }[];
 }

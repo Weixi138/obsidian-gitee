@@ -453,7 +453,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
                 new Notice('已是最新版本');
                 return;
               }
-              openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${notes || '无更新日志'}`);
+              openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${notes || '无更新日志'}`, latest);
             }),
           );
       });

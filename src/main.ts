@@ -345,7 +345,7 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       return;
     }
     this.setStatusBarText(`Gitee: 新版本 v${latest}`);
-    openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${result.notes || '无更新日志'}`);
+    openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${result.notes || '无更新日志'}`, latest);
   }
 
   private async fetchLatestVersion(): Promise<{ version: string; notes: string } | null> {

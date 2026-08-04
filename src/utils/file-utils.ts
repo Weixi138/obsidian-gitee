@@ -1,6 +1,16 @@
 import { Vault, TFile } from 'obsidian';
 import { arrayBufferToBase64 } from '../crypto';
 
+async function ensureParentFolder(vault: Vault, path: string): Promise<void> {
+  const parent = path.substring(0, path.lastIndexOf('/'));
+  if (parent) {
+    const exists = await vault.adapter.exists(parent);
+    if (!exists) {
+      await vault.createFolder(parent);
+    }
+  }
+}
+
 export async function readTextFile(vault: Vault, file: TFile): Promise<string> {
   return vault.read(file);
 }
@@ -30,6 +40,7 @@ export async function writeTextFile(vault: Vault, path: string, content: string)
   if (existing instanceof TFile) {
     await vault.modify(existing, content);
   } else {
+    await ensureParentFolder(vault, path);
     await vault.create(path, content);
   }
 }
@@ -39,6 +50,7 @@ export async function writeBinaryFile(vault: Vault, path: string, arrayBuffer: A
   if (existing instanceof TFile) {
     await vault.modifyBinary(existing, arrayBuffer);
   } else {
+    await ensureParentFolder(vault, path);
     await vault.createBinary(path, arrayBuffer);
   }
 }

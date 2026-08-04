@@ -54,6 +54,10 @@
   margin-top: 4px;
 }
 
+.gitee-status-bar {
+  cursor: pointer;
+}
+
 .gitee-settings-version {
   text-align: center;
   color: var(--text-muted);

@@ -43,11 +43,11 @@ function requestWithTimeout(url: string, method: string, body: string | undefine
         })
         .catch(err => {
           window.clearTimeout(timer);
-          reject(err);
+          reject(err instanceof Error ? err : new Error(String(err)));
         });
     } catch (e) {
       window.clearTimeout(timer);
-      reject(e);
+      reject(e instanceof Error ? e : new Error(String(e)));
     }
   });
 }

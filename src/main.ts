@@ -45,7 +45,7 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
 
     this.statusBarItem = this.addStatusBarItem();
     this.statusBarItem.setText('Gitee: 就绪');
-    this.statusBarItem.style.cssText = 'cursor: pointer;';
+    this.statusBarItem.addClass('gitee-status-bar');
     this.statusBarItem.addEventListener('click', () => {
       new Notice(`上次同步: ${this.stateManager.getState().lastSyncTime ? new Date(this.stateManager.getState().lastSyncTime).toLocaleString() : '从未'}`);
     });
@@ -234,17 +234,17 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
     );
 
     this.registerDomEvent(window, 'pagehide', () => {
-      this.stateManager.save(this.stateManager.getState());
+      void this.stateManager.save(this.stateManager.getState());
     });
 
     this.setupIntervalSync();
 
     if (this.settings.autoPullOnStart && this.settings.owner && this.settings.repo && this.settings.token) {
-      this.syncEngine.pullAll().catch(() => {});
+      void this.syncEngine.pullAll();
     }
 
     if (this.settings.mcpServerEnabled) {
-      this.mcpServer.start();
+      void this.mcpServer.start();
     }
 
     this.addSettingTab(
@@ -255,6 +255,7 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         this.saveSettings.bind(this),
         this.stateManager,
         this.historyManager,
+        this.mcpServer,
       ),
     );
   }
@@ -302,7 +303,7 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
     fab.addClass('gitee-mobile-fab');
     fab.innerHTML = '&#x2191;';
     fab.setAttribute('aria-label', '立即同步');
-    fab.addEventListener('click', () => {
+    this.registerDomEvent(fab, 'click', () => {
       this.setStatusBarText('Gitee: 推送中...');
       this.syncEngine.pushAll().then(result => {
         const parts: string[] = [];
@@ -320,7 +321,6 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       });
     });
     document.body.appendChild(fab);
-    this.registerDomEvent(fab, 'click', () => {});
   }
 
   async loadSettings() {

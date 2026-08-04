@@ -3,6 +3,7 @@ import { GiteeSyncSettings } from './types';
 import { GiteeClient } from './gitee/client';
 import { SyncStateManager } from './sync/state';
 import { SyncHistoryManager } from './sync/history';
+import { McpServer } from './sync/mcp-server';
 import { openHistoryModal } from './ui/history-view';
 import { runDiagnostics } from './utils/diagnostics';
 
@@ -11,6 +12,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
   private saveSettings: () => Promise<void>;
   private stateManager: SyncStateManager;
   private historyManager: SyncHistoryManager;
+  private mcpServer: McpServer;
   private pluginVersion: string;
 
   constructor(
@@ -20,12 +22,14 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
     saveSettings: () => Promise<void>,
     stateManager: SyncStateManager,
     historyManager: SyncHistoryManager,
+    mcpServer: McpServer,
   ) {
     super(app, plugin);
     this.settings = settings;
     this.saveSettings = saveSettings;
     this.stateManager = stateManager;
     this.historyManager = historyManager;
+    this.mcpServer = mcpServer;
     this.pluginVersion = plugin.manifest.version;
   }
 
@@ -393,9 +397,9 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
                 this.settings.mcpServerEnabled = value;
                 await this.saveSettings();
                 if (value) {
-                  (this.app as any).plugins.plugins['sync-gitee']?.mcpServer?.start();
+                  this.mcpServer.start();
                 } else {
-                  (this.app as any).plugins.plugins['sync-gitee']?.mcpServer?.stop();
+                  this.mcpServer.stop();
                 }
               }),
           );

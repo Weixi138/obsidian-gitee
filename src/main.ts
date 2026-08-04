@@ -27,7 +27,7 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
     this.passwordManager = new PasswordManager(this.settings);
     this.stateManager = new SyncStateManager(this);
     this.historyManager = new SyncHistoryManager(this);
-    this.historyManager.load().catch(() => {});
+    await this.historyManager.load();
     this.mcpServer = new McpServer(this.app);
     this.giteeClient = new GiteeClient(
       this.settings.owner,
@@ -192,13 +192,6 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
               }
             });
         });
-      }),
-    );
-
-    this.registerEvent(
-      this.app.vault.on('delete', (file) => {
-        if (!(file instanceof TFile)) return;
-        this.syncEngine.onFileDeleted(file.path).catch(() => {});
       }),
     );
 

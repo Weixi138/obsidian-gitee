@@ -1,3 +1,4 @@
+import { requestUrl } from 'obsidian';
 import { GiteeClient } from '../gitee/client';
 
 export interface DiagnosticResult {
@@ -14,14 +15,11 @@ export async function runDiagnostics(client: GiteeClient): Promise<DiagnosticRes
   };
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
     const dnsStart = Date.now();
-    await fetch('https://gitee.com', { method: 'HEAD', signal: controller.signal });
-    clearTimeout(timeout);
+    await requestUrl({ url: 'https://gitee.com', method: 'GET', throw: false });
     result.dns = { status: 'ok', detail: `连通 (${Date.now() - dnsStart}ms)` };
   } catch {
-    result.dns = { status: 'fail', detail: '无法解析 gitee.com' };
+    result.dns = { status: 'fail', detail: '无法连接到 gitee.com' };
     return result;
   }
 

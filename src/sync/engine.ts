@@ -103,7 +103,7 @@ export class SyncEngine {
           }
 
           if (state && state.localHash === localHash) {
-            continue;
+            if (this.remoteTree?.get(remotePath)) continue;
           }
 
           await this.uploadFile(file, remotePath, filePassword);

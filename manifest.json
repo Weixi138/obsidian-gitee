@@ -1,7 +1,7 @@
 {
 	"id": "sync-gitee",
 	"name": "sync-gitee",
-	"version": "2.2.9",
+	"version": "2.3.0",
 	"minAppVersion": "1.4.0",
 	"description": "端到端加密同步笔记到 Gitee 仓库",
 	"author": "weixi",

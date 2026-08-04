@@ -247,6 +247,17 @@ export class SyncEngine {
           }
         }
         if (!localPath) {
+          const files = this.vault.getFiles();
+          for (const file of files) {
+            const filePassword = this.passwordManager.getPasswordForFile(file.path);
+            const computed = await getRemotePath(file.path, filePassword);
+            if (computed === remotePath) {
+              localPath = file.path;
+              break;
+            }
+          }
+        }
+        if (!localPath) {
           result.skipped.push({ path: remotePath, reason: '路径映射和状态中均无对应本地路径' });
           continue;
         }

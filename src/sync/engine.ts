@@ -244,7 +244,8 @@ export class SyncEngine {
 
         try {
           const state = this.stateManager.getFileState(localPath);
-          if (state && state.remoteSha === info.sha) continue;
+          const fileExists = this.vault.getAbstractFileByPath(localPath) instanceof TFile;
+          if (state && state.remoteSha === info.sha && fileExists) continue;
 
           const data = await this.gitee.getFileContent(remotePath);
           if (!data) {

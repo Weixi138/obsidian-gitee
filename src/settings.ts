@@ -422,21 +422,38 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
           .addButton(button =>
             button.setButtonText('检查').onClick(async () => {
               new Notice('正在检查更新...');
-              try {
-                const resp = await requestUrl({
-                  url: 'https://api.github.com/repos/Weixi138/obsidian-gitee/releases/latest',
-                  method: 'GET',
-                });
-                const latest = (resp.json.tag_name as string).replace(/^v/, '');
-                const current = this.pluginVersion;
-                if (latest === current) {
-                  new Notice('已是最新版本');
-                  return;
+              const urls = [
+                'https://api.github.com/repos/Weixi138/obsidian-gitee/releases/latest',
+                'https://github.com/Weixi138/obsidian-gitee/releases/latest',
+              ];
+              let latest: string | null = null;
+              let notes = '';
+              for (const url of urls) {
+                try {
+                  const resp = await requestUrl({ url, method: 'GET' });
+                  if (url.includes('api.github.com')) {
+                    const tag = resp.json.tag_name as string;
+                    latest = tag.replace(/^v/, '');
+                    notes = resp.json.body || '';
+                  } else {
+                    const match = resp.text.match(/releases\/tag\/v?(\d+\.\d+\.\d+)/);
+                    if (match) latest = match[1]!;
+                  }
+                  if (latest) break;
+                } catch {
+                  continue;
                 }
-                openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${resp.json.body || '无更新日志'}`);
-              } catch {
-                new Notice('检查更新失败，请检查网络连接');
               }
+              if (!latest) {
+                new Notice('检查更新失败（GitHub 连接异常）');
+                return;
+              }
+              const current = this.pluginVersion;
+              if (latest === current) {
+                new Notice('已是最新版本');
+                return;
+              }
+              openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${notes || '无更新日志'}`);
             }),
           );
       });

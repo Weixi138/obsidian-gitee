@@ -333,22 +333,45 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
     await this.saveData(this.settings);
 
     this.setStatusBarText('Gitee: 检查更新...');
+    const result = await this.fetchLatestVersion();
+    if (!result) {
+      this.setStatusBarText('Gitee: 更新检查失败');
+      return;
+    }
+    const latest = result.version;
+    const current = this.manifest.version;
+    if (latest === current) {
+      this.setStatusBarText('Gitee: 已是最新');
+      return;
+    }
+    this.setStatusBarText(`Gitee: 新版本 v${latest}`);
+    openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${result.notes || '无更新日志'}`);
+  }
+
+  private async fetchLatestVersion(): Promise<{ version: string; notes: string } | null> {
     try {
       const resp = await requestUrl({
         url: 'https://api.github.com/repos/Weixi138/obsidian-gitee/releases/latest',
         method: 'GET',
       });
-      const latest = (resp.json.tag_name as string).replace(/^v/, '');
-      const current = this.manifest.version;
-      if (latest === current) {
-        this.setStatusBarText('Gitee: 已是最新');
-        return;
-      }
-      this.setStatusBarText(`Gitee: 新版本 v${latest}`);
-      openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${resp.json.body || '无更新日志'}`);
+      const tag = resp.json.tag_name as string;
+      return { version: tag.replace(/^v/, ''), notes: resp.json.body || '' };
     } catch {
-      this.setStatusBarText('Gitee: 更新检查失败');
+      // 第 1 优先失败，尝试第 2 优先：HTML 页面
     }
+    try {
+      const resp = await requestUrl({
+        url: 'https://github.com/Weixi138/obsidian-gitee/releases/latest',
+        method: 'GET',
+      });
+      const match = resp.text.match(/releases\/tag\/v?(\d+\.\d+\.\d+)/);
+      if (match) {
+        return { version: match[1]!, notes: '' };
+      }
+    } catch {
+      // 第 2 优先也失败
+    }
+    return null;
   }
 }
 

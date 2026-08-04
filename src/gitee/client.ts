@@ -44,17 +44,14 @@ export class GiteeClient {
   }
 
   private async request<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
-    const url = `${API_BASE}${path}`;
-    const headers: Record<string, string> = {
-      'Authorization': `Bearer ${this.token}`,
-      'Content-Type': 'application/json',
-    };
+    const separator = path.includes('?') ? '&' : '?';
+    const url = `${API_BASE}${path}${separator}access_token=${this.token}`;
 
     try {
       const response = await requestUrl({
         url,
         method,
-        headers,
+        contentType: 'application/json',
         body: body ? JSON.stringify(body) : undefined,
         throw: false,
       });

@@ -1,4 +1,4 @@
-import { App, Menu, Modal, Notice, Plugin, TFile } from 'obsidian';
+import { App, Menu, Modal, Notice, Platform, Plugin, TFile } from 'obsidian';
 import { GiteeSyncSettings, DEFAULT_SETTINGS } from './types';
 import { GiteeSyncSettingTab } from './settings';
 import { GiteeClient } from './gitee/client';
@@ -49,6 +49,10 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
     this.statusBarItem.addEventListener('click', () => {
       new Notice(`上次同步: ${this.stateManager.getState().lastSyncTime ? new Date(this.stateManager.getState().lastSyncTime).toLocaleString() : '从未'}`);
     });
+
+    if (Platform.isMobile) {
+      this.addMobileActionButton();
+    }
 
     this.addCommand({
       id: 'gitee-push',
@@ -229,6 +233,10 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       }),
     );
 
+    this.registerDomEvent(window, 'pagehide', () => {
+      this.stateManager.save(this.stateManager.getState());
+    });
+
     this.setupIntervalSync();
 
     if (this.settings.autoPullOnStart && this.settings.owner && this.settings.repo && this.settings.token) {
@@ -287,6 +295,32 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
 
   private setStatusBarText(text: string) {
     this.statusBarItem.setText(text);
+  }
+
+  private addMobileActionButton() {
+    const fab = document.createElement('button');
+    fab.addClass('gitee-mobile-fab');
+    fab.innerHTML = '&#x2191;';
+    fab.setAttribute('aria-label', '立即同步');
+    fab.addEventListener('click', () => {
+      this.setStatusBarText('Gitee: 推送中...');
+      this.syncEngine.pushAll().then(result => {
+        const parts: string[] = [];
+        if (result.uploaded > 0) parts.push(`上传 ${result.uploaded} 个文件`);
+        if (result.skipped.length > 0) parts.push(`跳过 ${result.skipped.length} 个文件`);
+        new Notice(`推送完成: ${parts.join(', ') || '无变更'}`);
+        this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
+        this.historyManager.addRecord({
+          timestamp: Date.now(), type: 'push',
+          uploaded: result.uploaded, downloaded: 0, deleted: result.deleted,
+          errors: result.errors,
+        }).catch(() => {});
+      }).catch(() => {
+        this.setStatusBarText('Gitee: 失败');
+      });
+    });
+    document.body.appendChild(fab);
+    this.registerDomEvent(fab, 'click', () => {});
   }
 
   async loadSettings() {

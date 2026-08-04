@@ -1,3 +1,16 @@
+/* ===== 触控目标 ===== */
+.gitee-sync-select-modal button,
+.gitee-sync-select-modal .checkbox-item {
+  min-height: 44px;
+}
+
+.gitee-sync-select-modal button:active,
+.gitee-sync-select-modal .checkbox-item:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+
+/* ===== 选择文件弹窗 ===== */
 .gitee-sync-select-modal input[type="text"] {
   width: 100%;
   margin-bottom: 10px;
@@ -26,6 +39,7 @@
   font-size: 0.9em;
 }
 
+/* ===== 历史弹窗 ===== */
 .gitee-history-modal pre {
   max-height: 500px;
   overflow-y: auto;
@@ -33,6 +47,7 @@
   white-space: pre-wrap;
 }
 
+/* ===== 设置页 ===== */
 .gitee-settings-hint {
   color: var(--text-muted);
   font-size: 0.85em;
@@ -44,4 +59,77 @@
   color: var(--text-muted);
   font-size: 0.85em;
   margin-top: 24px;
+}
+
+.gitee-settings-group {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: var(--background-secondary);
+}
+
+.gitee-settings-group-title {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.gitee-settings-group .setting-item {
+  border-top: none;
+  padding: 8px 0;
+}
+
+/* ===== 移动端悬浮按钮 ===== */
+.gitee-mobile-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 999;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.gitee-mobile-fab:active {
+  transform: scale(0.92);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== 移动端响应式 ===== */
+@media (max-width: 480px) {
+  .gitee-sync-select-modal .modal-button-container {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .gitee-sync-select-modal .modal-button-container button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .gitee-sync-select-modal input[type="text"] {
+    font-size: 16px;
+  }
+
+  .gitee-settings-group {
+    padding: 8px;
+  }
+
+  .gitee-settings-group .setting-item {
+    padding: 6px 0;
+  }
 }

@@ -230,9 +230,15 @@ export class SyncEngine {
       for (const [remotePath, info] of remoteTree) {
         if (!isEncryptedFile(remotePath) || info.type !== 'blob' || remotePath === 'path-map.json.enc') continue;
 
-        const localPath = pathMap[remotePath];
+        let localPath = pathMap[remotePath];
         if (!localPath) {
-          result.skipped.push({ path: remotePath, reason: '路径映射中无对应本地路径' });
+          const stateFile = this.stateManager.getFileStateByRemotePath(remotePath);
+          if (stateFile) {
+            localPath = stateFile.localPath;
+          }
+        }
+        if (!localPath) {
+          result.skipped.push({ path: remotePath, reason: '路径映射和状态中均无对应本地路径' });
           continue;
         }
 
@@ -248,16 +254,16 @@ export class SyncEngine {
 
           const filePassword = this.passwordManager.getPasswordForFile(localPath);
 
+          let localHash: string;
           if (isBinaryFileByExt(localPath)) {
             const decrypted = await decryptBinary(data.content, filePassword);
             await writeBinaryFile(this.vault, localPath, decrypted);
+            localHash = await computeSHA256(Array.from(new Uint8Array(decrypted)).map(b => String.fromCharCode(b)).join(''));
           } else {
             const decrypted = await decrypt(data.content, filePassword);
             await writeTextFile(this.vault, localPath, decrypted);
+            localHash = await computeSHA256(decrypted);
           }
-
-          const localContent = await readTextFile(this.vault, this.vault.getAbstractFileByPath(localPath) as TFile);
-          const localHash = await computeSHA256(localContent);
 
           pendingStates.push({
             localPath,
@@ -296,16 +302,16 @@ export class SyncEngine {
     const data = await this.gitee.getFileContent(remotePath);
     if (!data) throw new Error(`远程文件不存在: ${remotePath}`);
 
+    let localHash: string;
     if (isBinaryFile(file)) {
       const decrypted = await decryptBinary(data.content, password);
       await writeBinaryFile(this.vault, filePath, decrypted);
+      localHash = await computeSHA256(Array.from(new Uint8Array(decrypted)).map(b => String.fromCharCode(b)).join(''));
     } else {
       const decrypted = await decrypt(data.content, password);
       await writeTextFile(this.vault, filePath, decrypted);
+      localHash = await computeSHA256(decrypted);
     }
-
-    const localContent = await readTextFile(this.vault, file);
-    const localHash = await computeSHA256(localContent);
 
     await this.stateManager.updateFileState({
       localPath: filePath,

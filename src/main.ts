@@ -84,7 +84,11 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         try {
           this.setStatusBarText('Gitee: 拉取中...');
           const result = await this.syncEngine.pullAll();
-          new Notice(`拉取完成: 下载 ${result.downloaded} 个文件`);
+          const parts: string[] = [];
+          if (result.downloaded > 0) parts.push(`下载 ${result.downloaded} 个文件`);
+          if (result.skipped.length > 0) parts.push(`跳过 ${result.skipped.length} 个文件`);
+          if (result.errors.length > 0) parts.push(`错误 ${result.errors.length} 个`);
+          new Notice(`拉取完成: ${parts.join(', ') || '无变更'}`);
           this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
           await this.historyManager.addRecord({
             timestamp: Date.now(), type: 'pull',
@@ -139,7 +143,11 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
           try {
             this.setStatusBarText('Gitee: 拉取中...');
             const result = await this.syncEngine.pullAll();
-            new Notice(`拉取完成: 下载 ${result.downloaded} 个文件`);
+            const parts: string[] = [];
+            if (result.downloaded > 0) parts.push(`下载 ${result.downloaded} 个文件`);
+            if (result.skipped.length > 0) parts.push(`跳过 ${result.skipped.length} 个文件`);
+            if (result.errors.length > 0) parts.push(`错误 ${result.errors.length} 个`);
+            new Notice(`拉取完成: ${parts.join(', ') || '无变更'}`);
             this.setStatusBarText(`Gitee: ${new Date().toLocaleTimeString()}`);
             await this.historyManager.addRecord({
               timestamp: Date.now(), type: 'pull',

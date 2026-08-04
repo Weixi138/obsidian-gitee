@@ -1,4 +1,4 @@
-import { App, Menu, Modal, Notice, Plugin, TFile } from 'obsidian';
+import { App, Menu, Modal, Notice, Plugin, TFile, requestUrl } from 'obsidian';
 import { GiteeSyncSettings, DEFAULT_SETTINGS } from './types';
 import { GiteeSyncSettingTab } from './settings';
 import { GiteeClient } from './gitee/client';
@@ -7,6 +7,7 @@ import { PasswordManager } from './password-manager';
 import { SyncEngine } from './sync/engine';
 import { SyncHistoryManager } from './sync/history';
 import { McpServer } from './sync/mcp-server';
+import { openChangelogModal } from './ui/history-view';
 
 export default class GiteeEncryptedSyncPlugin extends Plugin {
   settings!: GiteeSyncSettings;
@@ -254,6 +255,10 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         this.mcpServer,
       ),
     );
+
+    if (this.settings.autoCheckUpdate) {
+      void this.checkForUpdate();
+    }
   }
 
   onunload() {
@@ -319,6 +324,26 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
     );
     this.setupIntervalSync();
     await this.saveData(this.settings);
+  }
+
+  async checkForUpdate(): Promise<void> {
+    const now = Date.now();
+    if (now - this.settings.lastUpdateCheck < 86400000) return;
+    this.settings.lastUpdateCheck = now;
+    await this.saveData(this.settings);
+
+    try {
+      const resp = await requestUrl({
+        url: 'https://api.github.com/repos/Weixi138/obsidian-gitee/releases/latest',
+        method: 'GET',
+      });
+      const latest = (resp.json.tag_name as string).replace(/^v/, '');
+      const current = this.manifest.version;
+      if (latest === current) return;
+      openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${resp.json.body || '无更新日志'}`);
+    } catch {
+      // 静默忽略检查失败
+    }
   }
 }
 

@@ -15,3 +15,19 @@ export function openHistoryModal(app: App, markdown: string): void {
     }
   }(app).open();
 }
+
+export function openChangelogModal(app: App, markdown: string): void {
+  new class extends Modal {
+    onOpen() {
+      const { contentEl } = this;
+      contentEl.addClass('gitee-history-modal');
+      contentEl.createEl('h2', { text: '发现新版本' });
+      const pre = contentEl.createEl('pre');
+      pre.addClass('gitee-history-modal');
+      pre.setText(markdown);
+    }
+    onClose() {
+      this.contentEl.empty();
+    }
+  }(app).open();
+}

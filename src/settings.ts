@@ -1,10 +1,10 @@
-import { App, Platform, Plugin, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, Platform, Plugin, PluginSettingTab, Setting, Notice, requestUrl } from 'obsidian';
 import { GiteeSyncSettings } from './types';
 import { GiteeClient } from './gitee/client';
 import { SyncStateManager } from './sync/state';
 import { SyncHistoryManager } from './sync/history';
 import { McpServer } from './sync/mcp-server';
-import { openHistoryModal } from './ui/history-view';
+import { openHistoryModal, openChangelogModal } from './ui/history-view';
 import { runDiagnostics } from './utils/diagnostics';
 
 export class GiteeSyncSettingTab extends PluginSettingTab {
@@ -402,6 +402,42 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
                   this.mcpServer.stop();
                 }
               }),
+          );
+
+        new Setting(containerEl)
+          .setName('自动检查更新')
+          .setDesc('启动时自动检查 GitHub 是否有新版本')
+          .addToggle(toggle =>
+            toggle
+              .setValue(this.settings.autoCheckUpdate)
+              .onChange(async value => {
+                this.settings.autoCheckUpdate = value;
+                await this.saveSettings();
+              }),
+          );
+
+        new Setting(containerEl)
+          .setName('检查更新')
+          .setDesc('手动检查 GitHub 是否有新版本')
+          .addButton(button =>
+            button.setButtonText('检查').onClick(async () => {
+              new Notice('正在检查更新...');
+              try {
+                const resp = await requestUrl({
+                  url: 'https://api.github.com/repos/Weixi138/obsidian-gitee/releases/latest',
+                  method: 'GET',
+                });
+                const latest = (resp.json.tag_name as string).replace(/^v/, '');
+                const current = this.pluginVersion;
+                if (latest === current) {
+                  new Notice('已是最新版本');
+                  return;
+                }
+                openChangelogModal(this.app, `发现新版本 v${latest}\n\n当前版本 v${current}\n\n---\n\n${resp.json.body || '无更新日志'}`);
+              } catch {
+                new Notice('检查更新失败，请检查网络连接');
+              }
+            }),
           );
       });
     }

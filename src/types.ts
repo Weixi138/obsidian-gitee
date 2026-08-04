@@ -15,6 +15,8 @@ export interface GiteeSyncSettings {
   autoPullOnStart: boolean;
   syncIntervalMin: number;
   mcpServerEnabled: boolean;
+  autoCheckUpdate: boolean;
+  lastUpdateCheck: number;
 }
 
 export const DEFAULT_SETTINGS: GiteeSyncSettings = {
@@ -32,6 +34,8 @@ export const DEFAULT_SETTINGS: GiteeSyncSettings = {
   autoPullOnStart: false,
   syncIntervalMin: 0,
   mcpServerEnabled: false,
+  autoCheckUpdate: true,
+  lastUpdateCheck: 0,
 };
 
 export interface SyncFileState {

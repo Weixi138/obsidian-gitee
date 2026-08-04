@@ -88,7 +88,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
       });
     const hint = passwordSetting.descEl.createEl('div');
     hint.setText('更改密码后需要重新加密所有文件');
-    hint.style.cssText = 'color: var(--text-muted); font-size: 0.85em; margin-top: 4px;';
+    hint.addClass('gitee-settings-hint');
 
     new Setting(containerEl)
       .setName('分支')
@@ -391,6 +391,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
 
     containerEl.createEl('div', {
       text: `版本 ${this.pluginVersion}`,
-    }).style.cssText = 'text-align: center; color: var(--text-muted); font-size: 0.85em; margin-top: 24px;';
+      cls: 'gitee-settings-version',
+    });
   }
 }

@@ -7,7 +7,6 @@ import { PasswordManager } from './password-manager';
 import { SyncEngine } from './sync/engine';
 import { SyncHistoryManager } from './sync/history';
 import { McpServer } from './sync/mcp-server';
-import { openHistoryModal } from './ui/history-view';
 
 export default class GiteeEncryptedSyncPlugin extends Plugin {
   settings!: GiteeSyncSettings;
@@ -338,14 +337,13 @@ class PushSelectModal extends Modal {
       type: 'text',
       placeholder: '搜索文件...',
     });
-    this.searchInput.style.cssText = 'width: 100%; margin-bottom: 10px;';
+    this.searchInput.addClass('gitee-sync-select-modal');
     this.searchInput.addEventListener('input', () => this.renderList());
 
     this.listEl = contentEl.createEl('div');
-    this.listEl.style.cssText = 'max-height: 400px; overflow-y: auto;';
+    this.listEl.addClass('file-list');
 
     const btnRow = contentEl.createEl('div', { cls: 'modal-button-container' });
-    btnRow.style.cssText = 'margin-top: 10px; display: flex; gap: 8px;';
 
     const selectAllBtn = btnRow.createEl('button', { text: '全选' });
     selectAllBtn.addEventListener('click', () => {
@@ -397,7 +395,6 @@ class PushSelectModal extends Modal {
     });
     for (const file of files) {
       const item = this.listEl.createEl('div', { cls: 'checkbox-item' });
-      item.style.cssText = 'display: flex; align-items: center; padding: 4px 0; cursor: pointer;';
 
       const cb = item.createEl('input', { type: 'checkbox' });
       cb.checked = this.selected.has(file.path);
@@ -407,7 +404,6 @@ class PushSelectModal extends Modal {
       });
 
       const label = item.createEl('span', { text: file.path });
-      label.style.cssText = 'margin-left: 8px; font-size: 0.9em;';
 
       item.addEventListener('click', (e) => {
         if (e.target === cb) return;

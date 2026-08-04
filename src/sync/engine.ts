@@ -1,6 +1,6 @@
 import { Plugin, TFile, Vault, Notice } from 'obsidian';
 import { GiteeSyncSettings, SyncFileState, SyncResult } from '../types';
-import { encrypt, encryptBinary, decrypt, decryptBinary, computeSHA256 } from '../crypto';
+import { encrypt, encryptBinary, decrypt, decryptBinary, computeSHA256, computeSHA256Buffer } from '../crypto';
 import { getRemotePath, isEncryptedFile, isIgnored } from '../utils/path';
 import { readTextFile, readBinaryAsUint8Array, isBinaryFile, getFileSize, writeTextFile, writeBinaryFile } from '../utils/file-utils';
 import { GiteeClient } from '../gitee/client';
@@ -82,6 +82,7 @@ export class SyncEngine {
       }
 
       const pendingStates: SyncFileState[] = [];
+      const pendingPathMap: Array<[string, string]> = [];
 
       for (const file of localFiles) {
         try {
@@ -92,7 +93,7 @@ export class SyncEngine {
           let localHash: string;
           if (isBinaryFile(file)) {
             const uint8Data = await readBinaryAsUint8Array(this.vault, file);
-            localHash = await computeSHA256(Array.from(uint8Data).map(b => String.fromCharCode(b)).join(''));
+            localHash = await computeSHA256Buffer(uint8Data.buffer as ArrayBuffer);
           } else {
             const content = await readTextFile(this.vault, file);
             localHash = await computeSHA256(content);
@@ -111,6 +112,7 @@ export class SyncEngine {
             remoteSha: remoteInfo?.sha || '',
             lastSync: Date.now(),
           });
+          pendingPathMap.push([remotePath, file.path]);
           result.uploaded++;
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -121,6 +123,10 @@ export class SyncEngine {
       const deletedStates: SyncFileState[] = [];
       for (const [localPath, state] of Object.entries(this.stateManager.getState().files)) {
         if (!localPaths.has(localPath)) {
+          if (isIgnored(localPath, this.settings.ignorePatterns)) {
+            result.skipped.push({ path: localPath, reason: '已被忽略模式过滤，跳过删除远程' });
+            continue;
+          }
           try {
             await this.gitee.deleteFile(state.remotePath, `Delete: ${localPath}`, state.remoteSha);
             deletedStates.push(state);
@@ -133,6 +139,9 @@ export class SyncEngine {
       }
 
       if (pendingStates.length > 0 || deletedStates.length > 0) {
+        if (pendingPathMap.length > 0) {
+          await this.batchSavePathMap(pendingPathMap);
+        }
         await this.stateManager.batchUpdate(pendingStates);
         for (const ds of deletedStates) {
           await this.stateManager.removeFileState(ds.localPath);
@@ -167,7 +176,7 @@ export class SyncEngine {
       const encrypted = await encryptBinary(uint8Data.buffer as ArrayBuffer, password);
       const base64Content = btoa(encrypted);
       const remoteSha = await this.gitee.createOrUpdateFile(remotePath, base64Content, `Push: ${remotePath}`, existingSha);
-      localHash = await computeSHA256(Array.from(uint8Data).map(b => String.fromCharCode(b)).join(''));
+      localHash = await computeSHA256Buffer(uint8Data.buffer as ArrayBuffer);
       await this.stateManager.updateFileState({
         localPath: filePath,
         remotePath,
@@ -259,7 +268,7 @@ export class SyncEngine {
           if (isBinaryFileByExt(localPath)) {
             const decrypted = await decryptBinary(data.content, filePassword);
             await writeBinaryFile(this.vault, localPath, decrypted);
-            localHash = await computeSHA256(Array.from(new Uint8Array(decrypted)).map(b => String.fromCharCode(b)).join(''));
+            localHash = await computeSHA256Buffer(decrypted);
           } else {
             const decrypted = await decrypt(data.content, filePassword);
             await writeTextFile(this.vault, localPath, decrypted);
@@ -307,7 +316,7 @@ export class SyncEngine {
     if (isBinaryFile(file)) {
       const decrypted = await decryptBinary(data.content, password);
       await writeBinaryFile(this.vault, filePath, decrypted);
-      localHash = await computeSHA256(Array.from(new Uint8Array(decrypted)).map(b => String.fromCharCode(b)).join(''));
+      localHash = await computeSHA256Buffer(decrypted);
     } else {
       const decrypted = await decrypt(data.content, password);
       await writeTextFile(this.vault, filePath, decrypted);
@@ -362,13 +371,23 @@ export class SyncEngine {
       const base64Content = btoa(encrypted);
       await this.gitee.createOrUpdateFile(remotePath, base64Content, `Sync: ${remotePath}`, existingSha);
     }
-
-    await this.savePathMapEntry(remotePath, file.path);
   }
 
   private async savePathMapEntry(remotePath: string, localPath: string): Promise<void> {
     const map = await this.loadPathMap();
     map[remotePath] = localPath;
+    await this.writePathMap(map);
+  }
+
+  private async batchSavePathMap(entries: Array<[string, string]>): Promise<void> {
+    const map = await this.loadPathMap();
+    for (const [remotePath, localPath] of entries) {
+      map[remotePath] = localPath;
+    }
+    await this.writePathMap(map);
+  }
+
+  private async writePathMap(map: Record<string, string>): Promise<void> {
     const json = JSON.stringify(map, null, 2);
     const password = this.passwordManager.getPasswordForFile('path-map.json.enc');
     const encrypted = await encrypt(json, password);

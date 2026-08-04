@@ -74,10 +74,11 @@ export async function deriveKey(password: string, salt: Uint8Array): Promise<Cry
     false,
     ['deriveKey'],
   );
+  const saltCopy = new Uint8Array(salt);
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: salt.buffer as ArrayBuffer,
+      salt: saltCopy,
       iterations: 100000,
       hash: 'SHA-256',
     },
@@ -91,6 +92,13 @@ export async function deriveKey(password: string, salt: Uint8Array): Promise<Cry
 export async function computeSHA256(data: string): Promise<string> {
   const encoded = new TextEncoder().encode(data);
   const hash = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function computeSHA256Buffer(data: ArrayBuffer): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(hash))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');

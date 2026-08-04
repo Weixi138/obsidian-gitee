@@ -2,6 +2,22 @@ import { App, Notice, TFile } from 'obsidian';
 
 const MCP_PORT = 3100;
 
+interface HttpRequest {
+  on: (event: string, handler: (...args: any[]) => void) => void;
+}
+
+interface HttpResponse {
+  writeHead: (status: number, headers: Record<string, string | number>) => void;
+  end: (data: string) => void;
+  on: (event: string, handler: (...args: any[]) => void) => void;
+}
+
+interface HttpServer {
+  listen: (port: number, callback: () => void) => void;
+  on: (event: string, handler: (err: Error) => void) => void;
+  close: () => void;
+}
+
 interface MCPTool {
   name: string;
   description: string;
@@ -49,7 +65,7 @@ const TOOLS: MCPTool[] = [
 
 export class McpServer {
   private app: App;
-  private server: any = null;
+  private server: HttpServer | null = null;
   private running = false;
 
   constructor(app: App) {
@@ -64,20 +80,20 @@ export class McpServer {
     if (this.running) return true;
 
     try {
-      const http = (window as any).require('http');
-      if (!http) throw new Error('http module not available');
+      const mod = (window as Record<string, any>).require('http');
+      if (!mod) throw new Error('http module not available');
 
-      this.server = http.createServer((req: any, res: any) => {
+      this.server = mod.createServer((req: HttpRequest, res: HttpResponse) => {
         this.handleRequest(req, res);
-      });
+      }) as HttpServer;
 
       return new Promise((resolve) => {
-        this.server.listen(MCP_PORT, () => {
+        this.server!.listen(MCP_PORT, () => {
           this.running = true;
           new Notice(`MCP 服务器已启动: http://localhost:${MCP_PORT}`);
           resolve(true);
         });
-        this.server.on('error', (err: Error) => {
+        this.server!.on('error', (err: Error) => {
           new Notice(`MCP 服务器启动失败: ${err.message}`);
           this.running = false;
           resolve(false);
@@ -102,7 +118,7 @@ export class McpServer {
     new Notice('MCP 服务器已停止');
   }
 
-  private async handleRequest(req: any, res: any): Promise<void> {
+  private async handleRequest(req: HttpRequest, res: HttpResponse): Promise<void> {
     const body = await this.readBody(req);
     let request: any;
     try {
@@ -123,7 +139,7 @@ export class McpServer {
     }
   }
 
-  private async handleToolCall(res: any, id: any, params: any): Promise<void> {
+  private async handleToolCall(res: HttpResponse, id: any, params: any): Promise<void> {
     const { name, arguments: args } = params || {};
 
     try {
@@ -193,24 +209,21 @@ export class McpServer {
     }
   }
 
-  private sendResult(res: any, id: any, result: any): void {
+  private sendResult(res: HttpResponse, id: any, result: any): void {
     this.sendJson(res, 200, { jsonrpc: '2.0', id, result });
   }
 
-  private sendError(res: any, id: any, code: number, message: string): void {
+  private sendError(res: HttpResponse, id: any, code: number, message: string): void {
     this.sendJson(res, 200, { jsonrpc: '2.0', id, error: { code, message } });
   }
 
-  private sendJson(res: any, status: number, data: any): void {
+  private sendJson(res: HttpResponse, status: number, data: any): void {
     const json = JSON.stringify(data);
-    res.writeHead(status, {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(json),
-    });
+    res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': json.length });
     res.end(json);
   }
 
-  private readBody(req: any): Promise<string> {
+  private readBody(req: HttpRequest): Promise<string> {
     return new Promise((resolve) => {
       let body = '';
       req.on('data', (chunk: string) => { body += chunk; });

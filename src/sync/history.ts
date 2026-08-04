@@ -44,7 +44,7 @@ export class SyncHistoryManager {
     }
     try {
       await this.save();
-    } catch (e) {
+    } catch {
       // 保存失败时记录仍在内存中，下次操作会重试
     }
   }

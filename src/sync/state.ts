@@ -2,6 +2,8 @@ import { Plugin } from 'obsidian';
 import { SyncState, SyncFileState } from '../types';
 import { getConfigDir } from '../types';
 
+const CURRENT_STATE_VERSION = 1;
+
 const EMPTY_STATE: SyncState = {
   stateVersion: 1,
   files: {},
@@ -32,7 +34,12 @@ export class SyncStateManager {
         return this.state;
       }
       const raw = await this.plugin.app.vault.adapter.read(path);
-      this.state = JSON.parse(raw) as SyncState;
+      const parsed = JSON.parse(raw) as SyncState;
+      if (parsed.stateVersion !== CURRENT_STATE_VERSION) {
+        this.state = { ...EMPTY_STATE, files: {} };
+        return this.state;
+      }
+      this.state = parsed;
       return this.state;
     } catch {
       this.state = { ...EMPTY_STATE, files: {} };
@@ -41,6 +48,10 @@ export class SyncStateManager {
   }
 
   async save(state: SyncState): Promise<void> {
+    if (!state || typeof state !== 'object') {
+      throw new Error('状态数据无效');
+    }
+    state.stateVersion = CURRENT_STATE_VERSION;
     this.state = state;
     const path = this.getStatePath();
     const dir = path.substring(0, path.lastIndexOf('/'));

@@ -1,4 +1,4 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal } from 'obsidian';
 
 export function openHistoryModal(app: App, markdown: string): void {
   new class extends Modal {
@@ -7,7 +7,7 @@ export function openHistoryModal(app: App, markdown: string): void {
       contentEl.addClass('gitee-history-modal');
       contentEl.createEl('h2', { text: '同步历史' });
       const pre = contentEl.createEl('pre');
-      pre.style.cssText = 'max-height: 500px; overflow-y: auto; font-size: 0.85em; white-space: pre-wrap;';
+      pre.addClass('gitee-history-modal');
       pre.setText(markdown);
     }
     onClose() {

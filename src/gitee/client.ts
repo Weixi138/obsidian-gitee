@@ -2,6 +2,55 @@ import { requestUrl } from 'obsidian';
 
 const API_BASE = 'https://gitee.com/api/v5';
 const REQUEST_DELAY = 200;
+const MAX_REQUESTS_PER_MINUTE = 55;
+const REQUEST_TIMEOUT = 30000;
+const MAX_RETRIES = 1;
+
+function sanitizeUrl(url: string): string {
+  return url.replace(/access_token=[^&]+/g, 'access_token=***');
+}
+
+const requestTimestamps: number[] = [];
+
+async function rateLimit(): Promise<void> {
+  const now = Date.now();
+  while (requestTimestamps.length > 0 && requestTimestamps[0]! < now - 60000) {
+    requestTimestamps.shift();
+  }
+  if (requestTimestamps.length >= MAX_REQUESTS_PER_MINUTE) {
+    const oldest = requestTimestamps[0]!;
+    const waitMs = oldest + 60000 - now + 100;
+    await new Promise(resolve => window.setTimeout(resolve, waitMs));
+  }
+  if (requestTimestamps.length > 0) {
+    const last = requestTimestamps[requestTimestamps.length - 1]!;
+    const gap = now - last;
+    if (gap < REQUEST_DELAY) {
+      await new Promise(resolve => window.setTimeout(resolve, REQUEST_DELAY - gap));
+    }
+  }
+  requestTimestamps.push(Date.now());
+}
+
+function requestWithTimeout(url: string, method: string, body: string | undefined, timeoutMs: number): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('请求超时')), timeoutMs);
+    try {
+      requestUrl({ url, method, contentType: 'application/json', body, throw: false })
+        .then(response => {
+          window.clearTimeout(timer);
+          resolve(response);
+        })
+        .catch(err => {
+          window.clearTimeout(timer);
+          reject(err);
+        });
+    } catch (e) {
+      window.clearTimeout(timer);
+      reject(e);
+    }
+  });
+}
 
 interface GiteeBranchData {
   commit: { sha: string };
@@ -47,27 +96,23 @@ export class GiteeClient {
     const separator = path.includes('?') ? '&' : '?';
     const url = `${API_BASE}${path}${separator}access_token=${this.token}`;
 
-    try {
-      const response = await requestUrl({
-        url,
-        method,
-        contentType: 'application/json',
-        body: body ? JSON.stringify(body) : undefined,
-        throw: false,
-      });
-      if (response.status >= 400) {
-        throw new Error(`Gitee API error ${response.status}: ${response.text}`);
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await rateLimit();
+        const response = await requestWithTimeout(url, method, body ? JSON.stringify(body) : undefined, REQUEST_TIMEOUT);
+        if (response.status >= 400) {
+          throw new Error(`Gitee API error ${response.status}: ${response.text}`);
+        }
+        return response.json as T;
+      } catch (e: unknown) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+        if (attempt < MAX_RETRIES) {
+          await new Promise(resolve => window.setTimeout(resolve, 1000));
+        }
       }
-      await this.delay(REQUEST_DELAY);
-      return response.json as T;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(msg);
     }
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => window.setTimeout(resolve, ms));
+    throw new Error(sanitizeUrl(lastError!.message));
   }
 
   async getBranchCommitSha(): Promise<string> {

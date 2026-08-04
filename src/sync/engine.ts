@@ -1,8 +1,8 @@
 import { Plugin, TFile, Vault, Notice } from 'obsidian';
 import { GiteeSyncSettings, SyncFileState, SyncResult } from '../types';
-import { encrypt, encryptBinary, computeSHA256 } from '../crypto';
+import { encrypt, encryptBinary, decrypt, decryptBinary, computeSHA256 } from '../crypto';
 import { getRemotePath, isEncryptedFile, isIgnored } from '../utils/path';
-import { readTextFile, readBinaryAsUint8Array, isBinaryFile, getFileSize } from '../utils/file-utils';
+import { readTextFile, readBinaryAsUint8Array, isBinaryFile, getFileSize, writeTextFile, writeBinaryFile } from '../utils/file-utils';
 import { GiteeClient } from '../gitee/client';
 import { SyncStateManager } from './state';
 import { PasswordManager } from '../password-manager';
@@ -33,7 +33,7 @@ export class SyncEngine {
   }
 
   async pushAll(): Promise<SyncResult> {
-    const result: SyncResult = { uploaded: 0, errors: [], skipped: [] };
+    const result: SyncResult = { uploaded: 0, downloaded: 0, errors: [], skipped: [] };
 
     try {
       if (!this.settings.owner || !this.settings.repo || !this.settings.token) {
@@ -101,10 +101,12 @@ export class SyncEngine {
           }
 
           await this.uploadFile(file, remotePath, password);
+          const remoteInfo = this.remoteTree?.get(remotePath);
           pendingStates.push({
             localPath: file.path,
             remotePath,
             localHash,
+            remoteSha: remoteInfo?.sha || '',
             lastSync: Date.now(),
           });
           result.uploaded++;
@@ -151,6 +153,7 @@ export class SyncEngine {
         localPath: filePath,
         remotePath,
         localHash,
+        remoteSha: remoteSha,
         lastSync: Date.now(),
       });
       await this.savePathMapEntry(remotePath, filePath);
@@ -165,11 +168,129 @@ export class SyncEngine {
         localPath: filePath,
         remotePath,
         localHash,
+        remoteSha: remoteSha,
         lastSync: Date.now(),
       });
       await this.savePathMapEntry(remotePath, filePath);
       return remoteSha;
     }
+  }
+
+  async pullAll(): Promise<SyncResult> {
+    const result: SyncResult = { uploaded: 0, downloaded: 0, errors: [], skipped: [] };
+
+    try {
+      if (!this.settings.owner || !this.settings.repo || !this.settings.token) {
+        new Notice('请先在设置中填写 Gitee 信息');
+        return { ...result, errors: ['设置不完整'] };
+      }
+
+      const password = await this.passwordManager.getPassword();
+
+      const commitSha = await this.gitee.getBranchCommitSha();
+      const treeSha = await this.gitee.getTreeSha(commitSha);
+      const remoteTree = await this.gitee.getRecursiveTree(treeSha);
+      this.remoteTree = remoteTree;
+
+      const pathMap = await this.loadPathMap();
+
+      await this.stateManager.load();
+
+      const currentHash = await this.passwordManager.getPasswordHash(password);
+      const storedHash = this.stateManager.getPasswordHash();
+      if (storedHash && currentHash !== storedHash) {
+        new Notice('检测到密码变更，请先在设置中更新密码');
+        result.errors.push('密码已变更');
+        return result;
+      }
+
+      const pendingStates: SyncFileState[] = [];
+
+      for (const [remotePath, info] of remoteTree) {
+        if (!isEncryptedFile(remotePath) || info.type !== 'blob' || remotePath === 'path-map.json.enc') continue;
+
+        const localPath = pathMap[remotePath];
+        if (!localPath) {
+          result.skipped.push({ path: remotePath, reason: '路径映射中无对应本地路径' });
+          continue;
+        }
+
+        try {
+          const state = this.stateManager.getFileState(localPath);
+          if (state && state.remoteSha === info.sha) continue;
+
+          const data = await this.gitee.getFileContent(remotePath);
+          if (!data) {
+            result.skipped.push({ path: localPath, reason: '远程文件不存在' });
+            continue;
+          }
+
+          if (isBinaryFileByExt(localPath)) {
+            const decrypted = await decryptBinary(data.content, password);
+            await writeBinaryFile(this.vault, localPath, decrypted);
+          } else {
+            const decrypted = await decrypt(data.content, password);
+            await writeTextFile(this.vault, localPath, decrypted);
+          }
+
+          const localContent = await readTextFile(this.vault, this.vault.getAbstractFileByPath(localPath) as TFile);
+          const localHash = await computeSHA256(localContent);
+
+          pendingStates.push({
+            localPath,
+            remotePath,
+            localHash,
+            remoteSha: info.sha,
+            lastSync: Date.now(),
+          });
+          result.downloaded++;
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          result.errors.push(`${localPath}: ${msg}`);
+        }
+      }
+
+      if (pendingStates.length > 0) {
+        await this.stateManager.batchUpdate(pendingStates);
+      }
+
+      return result;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      new Notice(`拉取失败: ${msg}`);
+      result.errors.push(msg);
+      return result;
+    }
+  }
+
+  async pullFile(filePath: string): Promise<void> {
+    const file = this.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) throw new Error(`文件不存在: ${filePath}`);
+
+    const password = await this.passwordManager.getPassword();
+    const remotePath = await getRemotePath(filePath, password);
+
+    const data = await this.gitee.getFileContent(remotePath);
+    if (!data) throw new Error(`远程文件不存在: ${remotePath}`);
+
+    if (isBinaryFile(file)) {
+      const decrypted = await decryptBinary(data.content, password);
+      await writeBinaryFile(this.vault, filePath, decrypted);
+    } else {
+      const decrypted = await decrypt(data.content, password);
+      await writeTextFile(this.vault, filePath, decrypted);
+    }
+
+    const localContent = await readTextFile(this.vault, file);
+    const localHash = await computeSHA256(localContent);
+
+    await this.stateManager.updateFileState({
+      localPath: filePath,
+      remotePath,
+      localHash,
+      remoteSha: data.sha,
+      lastSync: Date.now(),
+    });
   }
 
   private async uploadFile(file: TFile, remotePath: string, password: string): Promise<void> {
@@ -222,4 +343,14 @@ export class SyncEngine {
     }
     return {};
   }
+}
+
+function isBinaryFileByExt(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  const textExtensions = new Set([
+    'md', 'txt', 'html', 'css', 'js', 'ts', 'json', 'xml', 'yaml', 'yml',
+    'csv', 'log', 'ini', 'cfg', 'conf', 'sh', 'bat', 'ps1', 'py', 'rb',
+    'java', 'c', 'cpp', 'h', 'hpp', 'sql', 'r', 'tex', 'latex',
+  ]);
+  return !textExtensions.has(ext);
 }

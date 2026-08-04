@@ -50,7 +50,21 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
       },
     });
 
-    this.addRibbonIcon('cloud-upload', 'Gitee 推送', (evt: MouseEvent) => {
+    this.addCommand({
+      id: 'gitee-pull',
+      name: '从 Gitee 拉取所有文件',
+      callback: async () => {
+        try {
+          const result = await this.syncEngine.pullAll();
+          new Notice(`拉取完成: 下载 ${result.downloaded} 个文件`);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          new Notice(`拉取失败: ${msg}`);
+        }
+      },
+    });
+
+    this.addRibbonIcon('cloud-upload', 'Gitee 同步', (evt: MouseEvent) => {
       const menu = new Menu();
       menu.addItem(item => item
         .setTitle('推送全部文件')
@@ -73,6 +87,19 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         .onClick(async () => {
           new PushSelectModal(this.app, this.syncEngine).open();
         }));
+      menu.addSeparator();
+      menu.addItem(item => item
+        .setTitle('从 Gitee 拉取全部')
+        .setIcon('download')
+        .onClick(async () => {
+          try {
+            const result = await this.syncEngine.pullAll();
+            new Notice(`拉取完成: 下载 ${result.downloaded} 个文件`);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            new Notice(`拉取失败: ${msg}`);
+          }
+        }));
       menu.showAtMouseEvent(evt);
     });
 
@@ -89,6 +116,19 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
               } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : String(e);
                 new Notice(`推送失败: ${msg}`);
+              }
+            });
+        });
+        menu.addItem(item => {
+          item.setTitle('从 Gitee 拉取')
+            .setIcon('download')
+            .onClick(async () => {
+              try {
+                await this.syncEngine.pullFile(file.path);
+                new Notice(`拉取成功: ${file.path}`);
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                new Notice(`拉取失败: ${msg}`);
               }
             });
         });

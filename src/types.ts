@@ -24,6 +24,7 @@ export interface SyncFileState {
   localPath: string;
   remotePath: string;
   localHash: string;
+  remoteSha: string;
   lastSync: number;
 }
 
@@ -36,6 +37,7 @@ export interface SyncState {
 
 export interface SyncResult {
   uploaded: number;
+  downloaded: number;
   errors: string[];
   skipped: { path: string; reason: string }[];
 }

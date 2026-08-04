@@ -354,7 +354,7 @@ export default class GiteeEncryptedSyncPlugin extends Plugin {
         url: 'https://api.github.com/repos/Weixi138/obsidian-gitee/releases/latest',
         method: 'GET',
       });
-      const tag = resp.json.tag_name as string;
+      const tag = (resp.json.tag_name as string) || '';
       return { version: tag.replace(/^v/, ''), notes: resp.json.body || '' };
     } catch {
       // 第 1 优先失败，尝试第 2 优先：HTML 页面

@@ -432,7 +432,7 @@ export class GiteeSyncSettingTab extends PluginSettingTab {
                 try {
                   const resp = await requestUrl({ url, method: 'GET' });
                   if (url.includes('api.github.com')) {
-                    const tag = resp.json.tag_name as string;
+                    const tag = (resp.json.tag_name as string) || '';
                     latest = tag.replace(/^v/, '');
                     notes = resp.json.body || '';
                   } else {

@@ -7,6 +7,7 @@ const REQUEST_TIMEOUT = 30000;
 const MAX_RETRIES = 1;
 
 function sanitizeUrl(url: string): string {
+  if (!url) return url;
   return url.replace(/access_token=[^&]+/g, 'access_token=***');
 }
 
@@ -138,7 +139,7 @@ export class GiteeClient {
     try {
       const encodedPath = this.encodePath(path);
       const data = await this.request<GiteeContentData>('GET', `/repos/${this.owner}/${this.repo}/contents/${encodedPath}`);
-      const raw = atob(data.content.replace(/\n/g, ''));
+      const raw = atob((data.content || '').replace(/\n/g, ''));
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) {
         bytes[i] = raw.charCodeAt(i);
@@ -147,6 +148,7 @@ export class GiteeClient {
       return { content, sha: data.sha };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      console.error('[Gitee Client] getFileContent 错误:', msg, 'path:', path);
       if (msg.includes('404')) return null;
       throw e;
     }

@@ -176,6 +176,10 @@ export class SyncEngine {
       if (remoteInfo) existingSha = remoteInfo.sha;
     }
     if (!existingSha) {
+      const state = this.stateManager.getFileState(filePath);
+      if (state && state.remoteSha) existingSha = state.remoteSha;
+    }
+    if (!existingSha) {
       const existing = await this.gitee.getFileContent(remotePath);
       if (existing) existingSha = existing.sha;
     }
@@ -272,9 +276,31 @@ export class SyncEngine {
           }
         }
         if (!localPath) {
-          result.skipped.push({ path: remotePath, reason: '路径映射和状态中均无对应本地路径' });
-          continue;
+          const fallbackPath = `_recovered/${remotePath.replace(/\//g, '_')}`;
+          try {
+            const data = await this.gitee.getFileContent(remotePath);
+            if (data) {
+              const filePassword = this.passwordManager.getPasswordForFile('path-map.json.enc');
+              let decrypted: string;
+              try {
+                decrypted = await decrypt(data.content, filePassword);
+              } catch {
+                result.skipped.push({ path: remotePath, reason: '路径映射和状态中均无对应本地路径，且解密失败' });
+                continue;
+              }
+              await writeTextFile(this.vault, fallbackPath, decrypted);
+              localPath = fallbackPath;
+              if (this.pathMapCache) {
+                this.pathMapCache[remotePath] = localPath;
+              }
+              new Notice(`文件已恢复到 ${fallbackPath}`);
+            }
+          } catch {
+            result.skipped.push({ path: remotePath, reason: '路径映射和状态中均无对应本地路径' });
+            continue;
+          }
         }
+        if (!localPath) continue;
 
         try {
           const state = this.stateManager.getFileState(localPath);
@@ -407,9 +433,11 @@ export class SyncEngine {
   }
 
   private async savePathMapEntry(remotePath: string, localPath: string): Promise<void> {
-    const map = await this.loadPathMap();
-    map[remotePath] = localPath;
-    await this.writePathMap(map);
+    if (!this.pathMapCache) {
+      this.pathMapCache = await this.loadPathMap();
+    }
+    this.pathMapCache[remotePath] = localPath;
+    await this.writePathMap(this.pathMapCache);
   }
 
   private async batchSavePathMap(entries: Array<[string, string]>): Promise<void> {

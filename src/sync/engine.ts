@@ -175,6 +175,10 @@ export class SyncEngine {
       const remoteInfo = this.remoteTree.get(remotePath);
       if (remoteInfo) existingSha = remoteInfo.sha;
     }
+    if (!existingSha) {
+      const existing = await this.gitee.getFileContent(remotePath);
+      if (existing) existingSha = existing.sha;
+    }
 
     let localHash: string;
     if (isBinaryFile(file)) {
@@ -312,6 +316,14 @@ export class SyncEngine {
 
       if (pendingStates.length > 0) {
         await this.stateManager.batchUpdate(pendingStates);
+      }
+
+      if (this.pathMapCache) {
+        const pathMapSize = Object.keys(this.pathMapCache).length;
+        const initialSize = Object.keys(pathMap).length;
+        if (pathMapSize > initialSize) {
+          await this.writePathMap(this.pathMapCache);
+        }
       }
 
       return result;

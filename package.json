@@ -1,6 +1,6 @@
 {
 	"name": "sync-gitee",
-	"version": "2.2.7",
+	"version": "2.2.8",
 	"description": "Obsidian 插件 - 端到端加密同步笔记到 Gitee 仓库",
 	"main": "main.js",
 	"type": "module",

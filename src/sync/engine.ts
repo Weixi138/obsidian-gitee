@@ -435,18 +435,17 @@ export class SyncEngine {
 
   private async savePathMapEntry(remotePath: string, localPath: string): Promise<void> {
     if (!this.pathMapCache) {
-      this.pathMapCache = await this.loadPathMap();
+      const loaded = await this.loadPathMap();
+      if (Object.keys(loaded).length === 0) {
+        const exists = await this.gitee.getFileContent('path-map.json.enc');
+        if (exists) {
+          return;
+        }
+      }
+      this.pathMapCache = loaded;
     }
     this.pathMapCache[remotePath] = localPath;
     await this.writePathMap(this.pathMapCache);
-  }
-
-  private async batchSavePathMap(entries: Array<[string, string]>): Promise<void> {
-    const map = await this.loadPathMap();
-    for (const [remotePath, localPath] of entries) {
-      map[remotePath] = localPath;
-    }
-    await this.writePathMap(map);
   }
 
   private async writePathMap(map: Record<string, string>): Promise<void> {

@@ -276,24 +276,25 @@ export class SyncEngine {
           }
         }
         if (!localPath) {
-          const fallbackPath = `_recovered/${remotePath.replace(/\//g, '_')}`;
+          const encName = remotePath.replace(/\//g, '_');
+          const nameWithoutEnc = encName.endsWith('.enc') ? encName.slice(0, -4) : encName;
+          const fallbackPath = `_recovered/${nameWithoutEnc}`;
           try {
             const data = await this.gitee.getFileContent(remotePath);
             if (data) {
               const filePassword = this.passwordManager.getPasswordForFile('path-map.json.enc');
-              let decrypted: string;
-              try {
-                decrypted = await decrypt(data.content, filePassword);
-              } catch {
-                result.skipped.push({ path: remotePath, reason: '路径映射和状态中均无对应本地路径，且解密失败' });
-                continue;
+              if (isBinaryFileByExt(fallbackPath)) {
+                const decrypted = await decryptBinary(data.content, filePassword);
+                await writeBinaryFile(this.vault, fallbackPath, decrypted);
+              } else {
+                const decrypted = await decrypt(data.content, filePassword);
+                await writeTextFile(this.vault, fallbackPath, decrypted);
               }
-              await writeTextFile(this.vault, fallbackPath, decrypted);
               localPath = fallbackPath;
               if (this.pathMapCache) {
                 this.pathMapCache[remotePath] = localPath;
               }
-              new Notice(`文件已恢复到 ${fallbackPath}`);
+              new Notice(`文件已恢复到: ${fallbackPath}`);
             }
           } catch {
             result.skipped.push({ path: remotePath, reason: '路径映射和状态中均无对应本地路径' });

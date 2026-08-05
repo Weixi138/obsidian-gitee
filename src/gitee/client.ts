@@ -157,6 +157,16 @@ export class GiteeClient {
   async createOrUpdateFile(path: string, contentBase64: string, message: string, sha?: string): Promise<string> {
     const encodedPath = this.encodePath(path);
     const body: Record<string, unknown> = { message, content: contentBase64 };
+
+    if (!sha) {
+      try {
+        const existing = await this.getFileContent(path);
+        if (existing) sha = existing.sha;
+      } catch {
+        // 文件不存在，用 POST 新建
+      }
+    }
+
     if (sha) body.sha = sha;
     const method = sha ? 'PUT' : 'POST';
     const data = await this.request<GiteeFileResponse>(method, `/repos/${this.owner}/${this.repo}/contents/${encodedPath}`, body);
